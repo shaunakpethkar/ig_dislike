@@ -1,0 +1,44 @@
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Diagnostics output (screenshots, generated reports)
+diagnostics/*.png
+diagnostics/*.json
+diagnostics/*.txt
+
+# Logs
+logs/*
+!logs/.gitkeep
+
+# Keep diagnostics directory
+!diagnostics/.gitkeep
+
+# Environment / secrets
+.env
+*.env
+
+# Browser profiles, cookies, session data
+ig_selenium_profile/
+*.sqlite
+*.cookies
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
