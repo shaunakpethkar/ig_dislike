@@ -1,118 +1,163 @@
-# ig_dislike
+# Instagram Likes Batch Unliker
 
-Automated tool to unlike Instagram Reels from your Liked items, built with diagnostic-first development.
+A Windows Python/Selenium tool for removing liked Instagram media in
+small, verified batches.
 
-## Purpose
+The portable runner uses a local Firefox profile for each user. It does not
+contain or distribute an Instagram login session. Each user signs in manually
+the first time.
 
-Remove Reels from your ~48,000 liked Instagram items at:
-`https://www.instagram.com/your_activity/interactions/likes`
+## Important safety information
 
-This project takes a phased approach — proving each step is reliable before moving to the next.
+This tool performs destructive actions: it removes items from the Instagram
+account that is currently signed in. Start with one small batch and inspect
+the result before running more batches.
 
-## Environment
+- Use only with an account you own or are authorized to manage.
+- Review the selected count before confirming an Unlike operation.
+- Do not share your Firefox profile, cookies, passwords, or access tokens.
+- Do not commit `ig_selenium_profile` or runtime logs to GitHub.
+- Instagram may change its interface at any time. Stop if the page does not
+  behave as expected.
 
-| Component             | Version / Path                                        |
-|-----------------------|-------------------------------------------------------|
-| OS                    | Windows                                               |
-| Shell                 | PowerShell                                            |
-| Python                | 3.14.5                                                |
-| Selenium              | 4.50.0                                                |
-| Firefox               | 157                                                   |
-| Firefox executable    | `C:\Program Files\Mozilla Firefox\firefox.exe`        |
-| Selenium profile      | `C:\Users\Shaunak\ig_selenium_profile`                |
+## Requirements
 
-The Selenium profile already contains the Instagram login session and is reused across runs.
+Each computer running the tool needs:
 
-## Setup
+1. Windows 10 or newer.
+2. Python 3.11 or newer.
+3. Mozilla Firefox.
+4. Internet access.
+
+Selenium is installed from `requirements.txt`; it does not need to be
+installed globally.
+
+## Installation from GitHub
+
+Open PowerShell and run:
 
 ```powershell
-# 1. Navigate to the project
-cd C:\Users\Shaunak\Documents\ig_dislike
+git clone https://github.com/YOUR_USERNAME/ig_dislike.git
+cd ig_dislike
+```
 
-# 2. Create virtual environment (if not already created)
+Create a project-specific virtual environment:
+
+```powershell
 python -m venv .venv
+```
 
-# 3. Activate the virtual environment
+Allow activation scripts for the current PowerShell window and activate the
+environment:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
 .\.venv\Scripts\Activate.ps1
-
-# 4. Install dependencies
-pip install -r requirements.txt
 ```
 
-## Usage
-
-### Phase 1 – DOM Discovery (current)
+Install the project dependency:
 
 ```powershell
-python -m src.dom_probe
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
 ```
 
-This runs a **read-only** probe that:
-- Launches Firefox with the existing profile
-- Navigates to the Likes page
-- Detects login state (URL-based)
-- Locates the likes container and internal scrollable element
-- Enumerates currently rendered media cards
-- Scrolls through several positions and records card attributes
-- Saves diagnostic files into `diagnostics/`
-
-**No items are selected, unliked, or modified.**
-
-### Alternative entry point
+If PowerShell activation is unavailable, use the virtual-environment Python
+directly:
 
 ```powershell
-python -m src.main probe
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-## Development Phases
+## First run
 
-| Phase | Name                | Status      | Description                                              |
-|-------|---------------------|-------------|----------------------------------------------------------|
-| 1     | DOM Discovery       | ✅ Built    | Read-only probe of the Likes page DOM                    |
-| 2     | Reel Identification | ⬜ Pending  | Determine reliable Reel vs Photo vs Carousel markers     |
-| 3     | Selection Proof     | ⬜ Pending  | Select Reels only, verify count, do not unlike           |
-| 4     | Unlike Proof        | ⬜ Pending  | Single small batch unlike with verification              |
-| 5     | Batch Loop          | ⬜ Pending  | Repeated batches with reload and re-detection            |
+Run one small controlled batch:
 
-Each phase is only implemented after the previous phase is proven reliable.
-
-## Known Instagram DOM Behavior
-
-1. **Virtualised grid**: The Likes page does NOT render all ~48,000 items. Cards are recycled as the user scrolls. The DOM at any moment contains only a subset.
-
-2. **Internal scrollable container**: There is a scrollable `<div>` inside the page — `window.scrollTo()` alone does NOT scroll the likes grid.
-
-3. **Card identification**: Cards appear as `role="button"` elements with `aria-label` prefixes like `"Photo, ..."`, `"Carousel with ..."`. Video/Reel labels (`"Video, ..."`) are **not confirmed reliable** for Reel identification — this is what Phase 2 will determine.
-
-4. **Selection mode**: The page has a "Select" button that enters multi-select mode. Selected items show a toolbar with an "Unlike" action.
-
-5. **Confirmation dialog**: Clicking "Unlike" shows a `role="dialog"` confirmation modal with a native `<button>Unlike</button>`. This button **must** be clicked using Selenium WebDriver interaction, not JavaScript `.click()`.
-
-6. **Post-unlike recovery**: After confirming unlike, the grid needs time to rebuild. The automation must wait, reload the page, and re-detect before starting the next batch.
-
-7. **Stale elements**: After any scroll or page change, previously queried DOM elements are stale and must be re-queried.
-
-## Architecture
-
-```
-ig_dislike/
-├── src/
-│   ├── __init__.py       Package init
-│   ├── main.py           Entry point dispatcher
-│   ├── browser.py        Firefox/Selenium lifecycle, wait helpers, screenshots
-│   ├── instagram.py      Instagram page helpers (navigation, login, cards, scrolling)
-│   ├── selectors.py      Central registry of all CSS/XPath selectors
-│   └── dom_probe.py      Phase 1 read-only DOM discovery
-├── diagnostics/          Generated reports (JSON, TXT, PNG) — gitignored
-├── logs/                 Runtime logs — gitignored
-└── tests/                Future test files
+```powershell
+.\.venv\Scripts\python.exe -m src.main unlike-portable --batch-size 10 --max-batches 1
 ```
 
-## Safety Notes
+The runner will:
 
-- **Phase 1 is strictly read-only.** Nothing is clicked, selected, or deleted.
-- The project will not mass-unlike until diagnostic phases prove reliability.
-- Destructive actions (unlike) always use Selenium WebDriver clicks, never JavaScript.
-- Elements are re-queried after any DOM change to avoid stale references.
-- No progress counters are trusted until the operation is verified end-to-end.
-- Disappearance of a card from the virtualised DOM does NOT prove it was unliked.
+1. Find Firefox automatically.
+2. Create `ig_selenium_profile` inside the project directory.
+3. Open Instagram's Likes page.
+4. Wait for the user to log in manually if needed.
+5. Select only the configured target media.
+6. Verify Instagram's selected count before Unlike.
+7. Confirm the Unlike operation through the Instagram dialog.
+8. Reload and verify that normal mode is restored before another batch.
+
+Do not close Firefox while a batch is being verified or recovered.
+
+## Running more batches
+
+The default portable command runs one batch of up to 80 items:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main unlike-portable
+```
+
+Specify the batch size and maximum number of batches explicitly:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.main unlike-portable --batch-size 50 --max-batches 3
+```
+
+Use small values while testing. `--batch-size` is a maximum; Instagram may
+render fewer eligible cards than requested.
+
+## Logs
+
+Runtime logs are written to:
+
+```text
+logs\batch_unliker_YYYYMMDD_HHMMSS.log
+```
+
+If a run stops or reports an error, save the relevant log when asking for
+help. Do not include browser profiles, cookies, passwords, or other private
+account data.
+
+## Local files created at runtime
+
+These files and folders are machine-specific and should remain local:
+
+```text
+.venv\
+ig_selenium_profile\
+logs\
+__pycache__\
+```
+
+The repository `.gitignore` excludes them. Never copy an authenticated
+`ig_selenium_profile` to another person or commit it to GitHub.
+
+## Available commands
+
+Portable runner recommended for other computers:
+
+```powershell
+python -m src.main unlike-portable --batch-size 10 --max-batches 1
+```
+
+The repository also contains experimental runners:
+
+```powershell
+python -m src.main unlike-v2
+python -m src.main unlike-v3
+python -m src.main unlike-v4
+```
+
+Use `unlike-portable` on another computer because it discovers Firefox and
+uses a local per-user profile. The other runners may depend on local
+configuration and are not the recommended sharing interface.
+
+## Development checks
+
+Before submitting changes:
+
+```powershell
+.\.venv\Scripts\python.exe -m py_compile src\batch_unliker_portable.py src\batch_unliker_v4.py
+git diff --check
+```
