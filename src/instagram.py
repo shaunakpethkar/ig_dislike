@@ -326,6 +326,186 @@ def collect_card_diagnostics(element: WebElement) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Image-first ancestor chain (from original probe)
+# ---------------------------------------------------------------------------
+
+def collect_image_ancestor_chains(driver: WebDriver, max_images: int = 100) -> list[dict]:
+    """
+    For every visible <img> on the page, walk UP to 8 ancestor levels and
+    collect tag, role, aria-label, aria-describedby, href, data-testid,
+    className, innerText, and bounding rect.
+
+    This is the technique from the original dom_probe that revealed the DOM
+    tree structure from the image's perspective — invaluable for understanding
+    which wrapper element is the "card" and what attributes it carries.
+
+    READ-ONLY: no clicks, no modifications.
+    """
+    js = r"""
+    function attrs(el) {
+        const out = {};
+        if (!el || !el.attributes) return out;
+        for (const a of el.attributes) out[a.name] = a.value;
+        return out;
+    }
+
+    function cleanText(v) {
+        if (!v) return "";
+        return String(v).replace(/\n/g, " ").replace(/\r/g, " ")
+               .replace(/\s+/g, " ").trim().slice(0, 300);
+    }
+
+    const allImgs = document.querySelectorAll("img");
+    const results = [];
+    let count = 0;
+
+    for (const img of allImgs) {
+        if (count >= arguments[0]) break;
+
+        const r = img.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+
+        const entry = {
+            image: {
+                tag: img.tagName,
+                src: img.getAttribute("src"),
+                alt: img.getAttribute("alt"),
+                width: r.width,
+                height: r.height,
+                attrs: attrs(img)
+            },
+            ancestors: []
+        };
+
+        let node = img.parentElement;
+        for (let level = 1; node && level <= 8; level++) {
+            const nr = node.getBoundingClientRect();
+            entry.ancestors.push({
+                level: level,
+                tag: node.tagName,
+                role: node.getAttribute("role"),
+                ariaLabel: node.getAttribute("aria-label"),
+                ariaDescribedBy: node.getAttribute("aria-describedby"),
+                href: node.getAttribute("href"),
+                dataTestId: node.getAttribute("data-testid"),
+                className: String(node.className || "").slice(0, 500),
+                text: cleanText(node.innerText),
+                width: nr.width,
+                height: nr.height,
+                top: nr.top,
+                left: nr.left
+            });
+            node = node.parentElement;
+        }
+
+        results.push(entry);
+        count++;
+    }
+    return results;
+    """
+    try:
+        return driver.execute_script(js, max_images) or []
+    except Exception:
+        logger.exception("Error collecting image ancestor chains.")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Page-wide element sweep (from original probe)
+# ---------------------------------------------------------------------------
+
+def sweep_page_elements(driver: WebDriver, max_elements: int = 200) -> list[dict]:
+    """
+    Find all VISIBLE elements on the page that have any of:
+    role, aria-label, href, or data-testid.
+
+    This captures page-level controls (Select button, toolbar, navigation)
+    that are outside the likes container scope.
+
+    READ-ONLY: no clicks, no modifications.
+    """
+    js = """
+    const all = document.querySelectorAll("[role], [aria-label], [href], [data-testid]");
+    const results = [];
+    let count = 0;
+
+    for (const el of all) {
+        if (count >= arguments[0]) break;
+
+        const r = el.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) continue;
+
+        const role = el.getAttribute("role") || "";
+        const aria = el.getAttribute("aria-label") || "";
+        const href = el.getAttribute("href") || "";
+        const testid = el.getAttribute("data-testid") || "";
+
+        if (!role && !aria && !href && !testid) continue;
+
+        results.push({
+            tag: el.tagName.toLowerCase(),
+            role: role,
+            ariaLabel: aria.slice(0, 300),
+            href: href.slice(0, 300),
+            dataTestId: testid,
+            className: String(el.className || "").slice(0, 200),
+            width: r.width,
+            height: r.height
+        });
+        count++;
+    }
+    return results;
+    """
+    try:
+        return driver.execute_script(js, max_elements) or []
+    except Exception:
+        logger.exception("Error sweeping page elements.")
+        return []
+
+
+# ---------------------------------------------------------------------------
+# Unscoped scrollable container search (from original probe)
+# ---------------------------------------------------------------------------
+
+def find_all_page_scrollables(driver: WebDriver) -> list[dict]:
+    """
+    Search the ENTIRE page (not just inside the likes container) for
+    scrollable elements. The original probe did this and it sometimes
+    revealed scrollable containers that a scoped search missed.
+
+    READ-ONLY.
+    """
+    js = r"""
+    return Array.from(document.querySelectorAll("*"))
+        .filter(el => {
+            const s = getComputedStyle(el);
+            return (
+                (s.overflowY === "auto" || s.overflowY === "scroll") &&
+                el.scrollHeight > el.clientHeight + 20
+            );
+        })
+        .slice(0, 50)
+        .map(el => ({
+            tag: el.tagName.toLowerCase(),
+            role: el.getAttribute("role"),
+            ariaLabel: el.getAttribute("aria-label"),
+            id: el.id || null,
+            dataTestId: el.getAttribute("data-testid"),
+            className: String(el.className || "").slice(0, 300),
+            scrollTop: el.scrollTop,
+            clientHeight: el.clientHeight,
+            scrollHeight: el.scrollHeight,
+            textPreview: String(el.innerText || "").replace(/\s+/g, " ").trim().slice(0, 200)
+        }));
+    """
+    try:
+        return driver.execute_script(js) or []
+    except Exception:
+        logger.exception("Error searching page-wide scrollables.")
+        return []
+
+
+# ---------------------------------------------------------------------------
 # Scroll helpers (READ-ONLY — scroll only, no interaction)
 # ---------------------------------------------------------------------------
 
